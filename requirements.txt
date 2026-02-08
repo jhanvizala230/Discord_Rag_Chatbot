@@ -1,0 +1,48 @@
+# ----------------------------
+# Core API / Backend
+# ----------------------------
+fastapi
+uvicorn[standard]
+python-multipart
+sqlalchemy
+requests
+
+# ----------------------------
+# Data / ML
+# ----------------------------
+numpy
+pandas
+
+# ----------------------------
+# Vector DB / Persistence
+# ----------------------------
+chromadb
+sentence-transformers
+
+# ----------------------------
+# LangChain stack
+# ----------------------------
+langchain==0.3.20
+langchain-core==0.3.41
+langchain-community==0.3.19
+langchain-text-splitters==0.3.6
+
+langgraph==0.2.69
+langsmith==0.1.147
+
+langchain-pymupdf4llm==0.4.1
+langchain-ollama==0.2.2
+ddgs>=1.0.0
+
+
+# ----------------------------
+# Document Processing / Extraction
+# ----------------------------
+PyMuPDF
+camelot-py
+python-docx
+
+# ----------------------------
+# Validation / Serialization
+# ----------------------------
+pydantic

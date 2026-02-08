@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./
+      dockerfile: backend_langchain/Dockerfile
+    env_file:
+      - ./backend_langchain/.env
+    environment:
+      DOCINTEL_API_BASE: http://backend:8000
+      DOCUMENT_DOWNLOAD_BASE_URL: http://backend:8000
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_URL: http://host.docker.internal:11434/api/generate
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_output:/app/backend_langchain/output
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  discord-bot:
+    build:
+      context: ./
+      dockerfile: discord_bot/Dockerfile
+    env_file:
+      - ./discord_bot/.env
+    environment:
+      DOCINTEL_API_BASE: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend_output:

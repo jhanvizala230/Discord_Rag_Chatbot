@@ -4,7 +4,13 @@ from pathlib import Path
 import uuid, time
 from backend_langchain.core.config import DOCS_DIR, CHUNK_SIZE, CHUNK_OVERLAP
 from backend_langchain.vector_and_db.vectorstore import add_chunks, list_docs, get_doc_entries, delete_doc, delete_all_docs
-from backend_langchain.vector_and_db.db import register_doc, insert_raw_table, get_document
+from backend_langchain.vector_and_db.db import (
+    register_doc,
+    insert_raw_table,
+    get_document,
+    set_document_status,
+    get_document_status,
+)
 from backend_langchain.data_extraction.pdf_text_extraction import PyMuPDF4LLMPDFExtractor
 from backend_langchain.data_extraction.extractor import extract_and_chunk
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -43,6 +49,7 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
     out_path = DOCS_DIR / f"{doc_id}{ext}"
     with open(out_path, "wb") as f:
         f.write(content)
+    set_document_status(doc_id, "processing", "Upload received; starting extraction")
 
     def process_upload_document():
         try:
@@ -114,7 +121,8 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
                 chunk_id = f"txt_{doc_id}_{idx}"
                 chunk_texts.append(text)
                 chunk_ids.append(chunk_id)
-                chunk_types.append("text")
+                chunk_type = meta.get("content_type", "text") or "text"
+                chunk_types.append(chunk_type)
                 chunk_metas.append(
                     {
                         "entity_type": "text",
@@ -125,6 +133,7 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
                         "text": text,
                         "created_at": meta.get("created_at"),
                         "Category_Document": metadata.get("Category_Document"),
+                        "chunk_content_type": chunk_type,
                         **{k: v for k, v in meta.items() if k not in {"content_type"}},
                     }
                 )
@@ -151,8 +160,10 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
             except Exception as e:
                 logger.warning(f"Drift detection failed: {str(e)}")
             logger.info(f"API OUTPUT /upload | doc_id={doc_id}, chunks={len(chunk_texts)}, metadata={metadata}")
+            set_document_status(doc_id, "ready", f"Embedded {len(chunk_texts)} chunks")
         except Exception as e:
             logger.error(f"Background upload failed: {str(e)}")
+            set_document_status(doc_id, "error", str(e))
 
     background_tasks.add_task(process_upload_document)
     processing_time = time.time() - start_time
@@ -162,7 +173,9 @@ async def upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)
         "chunks": None,
         "processing_time_seconds": round(processing_time, 2),
         "drift_detection": None,
-        "background": True
+        "background": True,
+        "status_path": f"/documents/{doc_id}/status",
+        "status": "processing",
     }
 
 @router.get("/getdocs")
@@ -261,3 +274,17 @@ def download_document_file(doc_id: str):
         filename=download_name,
         media_type="application/octet-stream",
     )
+
+
+@router.get("/documents/{doc_id}/status")
+def document_status(doc_id: str):
+    """Return ingestion/processing status for a document."""
+    status_row = get_document_status(doc_id)
+    if not status_row:
+        raise HTTPException(404, f"Status not found for document: {doc_id}")
+    return {
+        "doc_id": doc_id,
+        "status": status_row.get("status"),
+        "detail": status_row.get("detail"),
+        "updated_at": status_row.get("updated_at"),
+    }

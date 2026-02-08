@@ -6,7 +6,10 @@ Given a user question, generate 2-3 refined search queries that will help retrie
 - Specific details that should be searched
 - Breaking complex questions into focused sub-queries
 
-Output format: Return ONLY 5 numbered list of refined queries, nothing else.
+Output format:
+- Return ONLY a numbered list (1., 2., 3.) where each line contains one refined query.
+- Provide at most 3 refined queries.
+- Do not add commentary or explanations.
 
 Example:
 User question: "What are the causes for employee termination?"

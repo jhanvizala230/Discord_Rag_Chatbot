@@ -265,8 +265,14 @@ def query_top_k(q_emb, top_k: int = TOP_K):
             meets_similarity = similarity is not None and similarity >= SIMILARITY_THRESHOLD
             if meets_distance or meets_similarity:
                 results.append({"text": t, "meta": m, "distance": distance})
-        
-        logger.debug(f"Found {len(results)} matching documents")
+        if not results:
+            logger.debug(
+                "query_top_k_filtered | requested=%s | filtered_out=%s",
+                len(docs),
+                len(docs),
+            )
+        else:
+            logger.debug("Found %d matching documents", len(results))
         return results
     except Exception as e:
         logger.error(f"Similarity query failed: {e}")

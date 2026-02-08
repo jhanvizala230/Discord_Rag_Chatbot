@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+from typing import Optional
+from urllib.parse import urlparse
 
 from .logger import setup_logger
 
@@ -40,8 +42,8 @@ RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM
 # Retrieval
 TOP_K = int(os.environ.get("TOP_K", 30))
 FINAL_K = int(os.environ.get("FINAL_K", 15))
-SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", 0.65))
-RETRIEVAL_DISTANCE_THRESHOLD = float(os.environ.get("RETRIEVAL_DISTANCE_THRESHOLD", 0.6))
+SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", 0.55))
+RETRIEVAL_DISTANCE_THRESHOLD = float(os.environ.get("RETRIEVAL_DISTANCE_THRESHOLD", 0.8))
 
 # LLM
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -51,11 +53,22 @@ LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", 0.2))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", 1024))
 VISION_MODEL = os.environ.get("VISION_MODEL", "qwen3-vl:4b")
 
+def _sanitize_base_url(raw_value: Optional[str]) -> str:
+	"""Ensure document download base is a valid http(s) URL."""
+	default_base = os.environ.get("DOCINTEL_API_BASE", "http://localhost:8000").rstrip("/")
+	candidate = (raw_value or default_base).strip()
+	if not candidate.lower().startswith(("http://", "https://")):
+		logger.warning("document_base_invalid | value=%s | fallback=%s", candidate, default_base)
+		return default_base
+	parsed = urlparse(candidate)
+	if not parsed.scheme or not parsed.netloc:
+		logger.warning("document_base_unreachable | value=%s | fallback=%s", candidate, default_base)
+		return default_base
+	return candidate.rstrip("/")
+
+
 # Download links (used for citations)
-DOCUMENT_DOWNLOAD_BASE_URL = os.environ.get(
-	"DOCUMENT_DOWNLOAD_BASE_URL",
-	os.environ.get("DOCINTEL_API_BASE", "http://localhost:8000"),
-).rstrip("/")
+DOCUMENT_DOWNLOAD_BASE_URL = _sanitize_base_url(os.environ.get("DOCUMENT_DOWNLOAD_BASE_URL"))
 
 ALLOWED_IMAGE_EXTENSIONS = os.environ.get(
 	"ALLOWED_IMAGE_EXTENSIONS",

@@ -232,6 +232,16 @@ class DocumentExtractor:
                     "raw_table_csv": csv_str
                 }
             })
+            text_chunks.append(
+                {
+                    "text": summary,
+                    "metadata": {
+                        "content_type": "table_summary",
+                        "page": t_idx,
+                        "source": source_name,
+                    },
+                }
+            )
 
         return {
             "text_chunks": text_chunks,

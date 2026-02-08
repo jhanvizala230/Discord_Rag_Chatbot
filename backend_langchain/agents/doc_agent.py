@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable, RunnablePassthrough
@@ -122,23 +123,26 @@ class DocAgent:
     
     def _parse_refined_queries(self, refinement_output: str, original_query: str) -> List[str]:
         """Parse numbered list from query refinement output."""
-        refined_queries = [original_query]  # Always include original
-        
-        lines = refinement_output.strip().split("\n")
-        for line in lines:
-            line = line.strip()
-            if line and (line[0].isdigit() or line.startswith("-")):
-                # Remove numbering: "1. query" or "- query"
-                query = line.split(".", 1)[-1].split("-", 1)[-1].strip()
-                if query and query not in refined_queries:
-                    refined_queries.append(query)
-        
-        return refined_queries[:3]  # Max 3 queries
+        refined_queries = [original_query]
+        pattern = re.compile(r"^\s*(?:\d+\.|-)\s*(.+)$")
+        for raw_line in refinement_output.strip().split("\n"):
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = pattern.match(line)
+            if not match:
+                continue
+            candidate = match.group(1).strip()
+            if candidate and candidate not in refined_queries:
+                refined_queries.append(candidate)
+            if len(refined_queries) >= 4:
+                break
+        return refined_queries
     
     def _retrieve_documents(self, queries: List[str]) -> List[dict]:
         """Retrieve and deduplicate documents from multiple queries."""
         all_chunks = []
-        seen_chunk_ids = set()
+        seen_chunk_keys: set[Tuple[Optional[str], Optional[str]]] = set()
         
         for query in queries:
             query_embedding = self.embedder.embed_text(query)
@@ -146,14 +150,22 @@ class DocAgent:
             
             # Deduplicate by chunk_id
             for item in candidates:
-                chunk_id = item.get("meta", {}).get("chunk_id")
-                if chunk_id and chunk_id not in seen_chunk_ids:
-                    seen_chunk_ids.add(chunk_id)
-                    all_chunks.append({
+                meta = item.get("meta", {}) or {}
+                chunk_id = meta.get("chunk_id")
+                if chunk_id is None:
+                    chunk_id = meta.get("chunk_index")
+                doc_id = meta.get("doc_id") or meta.get("source_id")
+                dedupe_key = (doc_id, str(chunk_id) if chunk_id is not None else meta.get("page"))
+                if dedupe_key in seen_chunk_keys:
+                    continue
+                seen_chunk_keys.add(dedupe_key)
+                all_chunks.append(
+                    {
                         "text": item.get("text"),
-                        "meta": item.get("meta", {}),
-                        "distance": item.get("distance")
-                    })
+                        "meta": meta,
+                        "distance": item.get("distance"),
+                    }
+                )
         
         # Rerank combined results
         all_chunks = rerank(queries[0], all_chunks)
@@ -295,9 +307,7 @@ class DocAgent:
         
         try:
             # STEP 1: Refine query using first chain
-            refinement_output = self.query_refinement_chain.invoke({
-                "user_query": user_query
-            })
+            refinement_output = self.query_refinement_chain.invoke({"user_query": user_query})
             refined_queries = self._parse_refined_queries(refinement_output, user_query)
             logger.info(f"refined_queries | count={len(refined_queries)}")
             

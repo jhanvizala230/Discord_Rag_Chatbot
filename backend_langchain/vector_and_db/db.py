@@ -1,8 +1,20 @@
 """SQLite database operations for DocIntel."""
 
+from typing import Optional
+
 from sqlalchemy import (
-    Table, Column, Integer, String, Text, DateTime, MetaData, 
-    create_engine, select, func, Index
+    Table,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    MetaData,
+    create_engine,
+    select,
+    func,
+    Index,
+    update,
 )
 from datetime import datetime
 from langchain_community.chat_message_histories import SQLChatMessageHistory
@@ -53,6 +65,22 @@ documents_table = Table(
     Column("created_at", DateTime, default=func.now()),
 )
 Index("ix_documents_created", documents_table.c.created_at)
+
+
+# ============================================================================
+# TABLE 2b: DOCUMENT PROCESSING STATUS
+# ============================================================================
+
+document_status_table = Table(
+    "document_status",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("doc_id", String, unique=True, index=True, nullable=False),
+    Column("status", String, nullable=False),
+    Column("detail", Text),
+    Column("updated_at", DateTime, default=func.now(), onupdate=func.now()),
+)
+Index("ix_document_status_doc", document_status_table.c.doc_id)
 
 
 # ============================================================================
@@ -111,6 +139,44 @@ def register_doc(doc_id: str, filename: str, num_chunks: int,
     except Exception as exc:
         logger.error("register_doc_failed | doc_id=%s | error=%s", doc_id, exc)
         raise
+
+
+def set_document_status(doc_id: str, status: str, detail: Optional[str] = None) -> None:
+    """Create or update document processing status."""
+    now = datetime.utcnow()
+    payload = {
+        "doc_id": doc_id,
+        "status": status,
+        "detail": detail,
+        "updated_at": now,
+    }
+    with engine.begin() as conn:
+        existing = conn.execute(
+            select(document_status_table.c.doc_id).where(document_status_table.c.doc_id == doc_id)
+        ).first()
+        if existing:
+            conn.execute(
+                update(document_status_table)
+                .where(document_status_table.c.doc_id == doc_id)
+                .values(status=status, detail=detail, updated_at=now)
+            )
+        else:
+            conn.execute(document_status_table.insert().values(payload))
+    logger.debug("document_status_set | doc_id=%s | status=%s", doc_id, status)
+
+
+def get_document_status(doc_id: str) -> Optional[dict]:
+    """Fetch processing status for a document."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(document_status_table).where(document_status_table.c.doc_id == doc_id)
+        ).mappings().first()
+        if not row:
+            return None
+        result = dict(row)
+        if result.get("updated_at"):
+            result["updated_at"] = result["updated_at"].isoformat()
+        return result
 
 
 def get_document(doc_id: str) -> dict:

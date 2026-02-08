@@ -42,12 +42,19 @@ _DOC_KEYWORDS = (
     "page",
     "pages",
     "table",
+    "tables",
     "spreadsheet",
     "uploaded",
     "upload",
     "file",
     "files",
     "clause",
+    "handbook",
+    "manual",
+    "policy wording",
+    "lease",
+    "wordings",
+    "appendix",
 )
 _AMBIGUOUS_KEYWORDS = (
     "benefits",
@@ -81,6 +88,18 @@ _FINANCE_KEYWORDS = (
     "health cover",
     "medical cover",
     "insurance policy",
+    "market",
+    "latest rate",
+)
+_FRESH_DATA_KEYWORDS = (
+    "current",
+    "today",
+    "latest",
+    "live",
+    "updated",
+    "trend",
+    "news",
+    "market",
 )
 
 
@@ -149,17 +168,15 @@ class RoutingAgent:
                 llm_choice,
             )
             return llm_choice
-        doc_like = self._is_doc_query(query_text)
-        finance_like = self._is_finance(query_text)
+        history_text = (history or "").lower()
+        doc_context_signal = self._history_mentions_docs(history_text)
+        doc_like = doc_context_signal or self._is_doc_query(query_text)
+        finance_like = self._is_finance(query_text) and not doc_like and not doc_context_signal
         ambiguous = self._needs_clarification(query_text, doc_like, finance_like)
 
         if self._is_smalltalk(query_text):
             logger.debug("routing_decision | session_id=%s | route=smalltalk", session_id)
             return "smalltalk"
-
-        if doc_like and finance_like:
-            logger.debug("routing_decision | session_id=%s | ambiguous=doc_finance | route=clarify", session_id)
-            return "clarify"
 
         if doc_like:
             logger.debug("routing_decision | session_id=%s | route=doc", session_id)
@@ -219,6 +236,8 @@ class RoutingAgent:
         return any(keyword in query for keyword in _SMALLTALK_KEYWORDS)
 
     def _is_finance(self, query: str) -> bool:
+        if any(keyword in query for keyword in _DOC_KEYWORDS):
+            return False
         return any(keyword in query for keyword in _FINANCE_KEYWORDS)
 
     def _is_doc_query(self, query: str) -> bool:
@@ -228,3 +247,9 @@ class RoutingAgent:
         if doc_like or finance_like:
             return False
         return any(keyword in query for keyword in _AMBIGUOUS_KEYWORDS)
+
+    def _history_mentions_docs(self, history: str) -> bool:
+        if not history:
+            return False
+        doc_markers = ("uploaded", "saved", "document", "pdf", "handbook", "policy", "lease")
+        return any(marker in history for marker in doc_markers)

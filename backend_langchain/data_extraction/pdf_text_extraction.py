@@ -113,19 +113,32 @@ class PyMuPDF4LLMPDFExtractor:
                             },
                         }
                     )
+                    text_chunks.append(
+                        {
+                            "text": f"Table on page {page}: {table_text}",
+                            "metadata": {
+                                "content_type": "table_summary",
+                                "page": page,
+                                "source": source_name,
+                                "chunk_index": idx,
+                            },
+                        }
+                    )
                 continue
 
             if self.include_images and content_type == "image":
-                image_chunks.append(
-                    {
-                        "text": chunk.page_content or f"Image on page {page}",
-                        "metadata": {
-                            "content_type": "image",
-                            "page": page,
-                            "source": source_name,
-                        },
-                    }
-                )
+                image_text = chunk.page_content or f"Image on page {page}"
+                image_chunk = {
+                    "text": image_text,
+                    "metadata": {
+                        "content_type": "image_caption",
+                        "page": page,
+                        "source": source_name,
+                        "chunk_index": idx,
+                    },
+                }
+                image_chunks.append(image_chunk)
+                text_chunks.append(image_chunk)
                 continue
 
             plain_texts.append(chunk.page_content)
